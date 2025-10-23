@@ -11,6 +11,9 @@ const app = express();
 const PORT = process.env.PORT || 9000;
 const USER_DATA_DIR = path.join(__dirname, 'user_data');
 
+// Trust proxy - required for Render and other hosting platforms
+app.set('trust proxy', 1);
+
 // Create user_data directory if it doesn't exist
 if (!fs.existsSync(USER_DATA_DIR)) {
     fs.mkdirSync(USER_DATA_DIR);
@@ -23,9 +26,12 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: {
         secure: process.env.NODE_ENV === 'production',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
     }
 }));
 
