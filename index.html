@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investment Price Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Investment Price Tracker</h1>
+            <p>Track precious metals, cryptocurrencies, and custom investments</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Input Form -->
+            <section class="input-section">
+                <h2>Add Investment Entry</h2>
+                <form id="investmentForm">
+                    <div class="form-group">
+                        <label for="investmentName">Investment Name:</label>
+                        <input type="text" id="investmentName" required placeholder="e.g., My Gold Holdings">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="investmentType">Investment Type:</label>
+                        <select id="investmentType" required>
+                            <option value="">-- Select Type --</option>
+                            <option value="GOLD">Gold</option>
+                            <option value="SILVER">Silver</option>
+                            <option value="BTC">Bitcoin (BTC)</option>
+                            <option value="ETH">Ethereum (ETH)</option>
+                            <option value="LTC">Litecoin (LTC)</option>
+                            <option value="SOL">Solana (SOL)</option>
+                            <option value="XRP">Ripple (XRP)</option>
+                            <option value="CUSTOM">Custom / Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="amountGroup">
+                        <label for="amount">Amount (ounces/coins):</label>
+                        <input type="number" id="amount" step="0.00000001" required placeholder="0.00">
+                    </div>
+
+                    <div class="form-group" id="customValueGroup" style="display: none;">
+                        <label for="customValue">Current Value (USD):</label>
+                        <input type="number" id="customValue" step="0.01" placeholder="0.00">
+                    </div>
+
+                    <div class="form-group">
+                        <button type="button" id="fetchPriceBtn" class="btn btn-secondary">Fetch Current Price</button>
+                        <button type="submit" class="btn btn-primary">Save Entry</button>
+                    </div>
+
+                    <div id="priceDisplay" class="price-display"></div>
+                </form>
+            </section>
+
+            <!-- Investment Selector -->
+            <section class="selector-section">
+                <h2>View Investment</h2>
+                <div class="form-group">
+                    <label for="investmentSelector">Select Investment:</label>
+                    <select id="investmentSelector">
+                        <option value="all">All Investments</option>
+                    </select>
+                    <button id="refreshBtn" class="btn btn-secondary">Refresh</button>
+                </div>
+            </section>
+
+            <!-- Charts -->
+            <section class="charts-section">
+                <div class="chart-container">
+                    <h3 id="chartTitle">Overall Portfolio Value</h3>
+                    <canvas id="investmentChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Data Table -->
+            <section class="data-section">
+                <h2>Investment History</h2>
+                <div class="table-container">
+                    <table id="dataTable">
+                        <thead>
+                            <tr>
+                                <th>Investment Name</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Value (USD)</th>
+                                <th>Date/Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
