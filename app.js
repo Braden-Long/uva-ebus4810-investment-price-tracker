@@ -1,6 +1,7 @@
 // Global variables
 let currentChart = null;
 let currentPrice = null;
+let currentUser = null;
 
 // DOM Elements
 const investmentForm = document.getElementById('investmentForm');
@@ -13,6 +14,12 @@ const investmentSelector = document.getElementById('investmentSelector');
 const refreshBtn = document.getElementById('refreshBtn');
 const chartTitle = document.getElementById('chartTitle');
 const dataTableBody = document.getElementById('dataTableBody');
+const mainContent = document.getElementById('mainContent');
+const loginMessage = document.getElementById('loginMessage');
+const loginSection = document.getElementById('loginSection');
+const userSection = document.getElementById('userSection');
+const userName = document.getElementById('userName');
+const userPhoto = document.getElementById('userPhoto');
 
 // Event Listeners
 investmentType.addEventListener('change', handleTypeChange);
@@ -24,9 +31,49 @@ refreshBtn.addEventListener('click', refreshData);
 // Initialize app
 init();
 
-function init() {
-    loadInvestments();
-    loadData();
+async function init() {
+    await checkAuth();
+}
+
+async function checkAuth() {
+    try {
+        const response = await fetch('/api/user');
+        const data = await response.json();
+
+        if (data.authenticated) {
+            currentUser = data.user;
+            showAuthenticatedUI();
+            loadInvestments();
+            loadData();
+        } else {
+            showUnauthenticatedUI();
+        }
+    } catch (error) {
+        console.error('Error checking authentication:', error);
+        showUnauthenticatedUI();
+    }
+}
+
+function showAuthenticatedUI() {
+    loginSection.style.display = 'none';
+    userSection.style.display = 'flex';
+    mainContent.style.display = 'block';
+    loginMessage.style.display = 'none';
+
+    userName.textContent = currentUser.displayName;
+    if (currentUser.photo) {
+        userPhoto.src = currentUser.photo;
+        userPhoto.style.display = 'block';
+    } else {
+        userPhoto.style.display = 'none';
+    }
+}
+
+function showUnauthenticatedUI() {
+    loginSection.style.display = 'block';
+    userSection.style.display = 'none';
+    mainContent.style.display = 'none';
+    loginMessage.style.display = 'flex';
 }
 
 function handleTypeChange() {

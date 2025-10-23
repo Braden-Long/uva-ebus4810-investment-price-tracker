@@ -4,12 +4,14 @@ A lightweight web application for tracking investments including precious metals
 
 ## Features
 
+- **Google Authentication**: Secure login with Google accounts - each user has their own private data
 - **Multi-Asset Support**: Track gold, silver, Bitcoin, Ethereum, Litecoin, Solana, Ripple, and custom investments
 - **Automatic Price Fetching**: Real-time price lookup for supported assets via public APIs
-- **Historical Data**: All entries are timestamped and stored in CSV format
+- **Historical Data**: All entries are timestamped and stored in CSV format per user
 - **Interactive Charts**: Visualize investment values over time with trend lines
-- **Persistent Storage**: Data is retained across application restarts in a CSV file
+- **Persistent Storage**: Data is retained across application restarts with per-user CSV files
 - **Portfolio Overview**: View individual investments or overall portfolio value
+- **Privacy**: Your investment data is stored privately and only accessible when you're logged in
 
 ## Prerequisites
 
@@ -26,6 +28,41 @@ A lightweight web application for tracking investments including precious metals
 2. **Install dependencies**:
    ```bash
    npm install
+   ```
+
+3. **Configure Google OAuth** (Required):
+
+   a. Go to [Google Cloud Console](https://console.cloud.google.com/)
+
+   b. Create a new project (or select an existing one)
+
+   c. Enable the Google+ API:
+      - Go to "APIs & Services" → "Library"
+      - Search for "Google+ API" and enable it
+
+   d. Create OAuth 2.0 credentials:
+      - Go to "APIs & Services" → "Credentials"
+      - Click "Create Credentials" → "OAuth 2.0 Client ID"
+      - Configure consent screen if prompted
+      - Application type: Web application
+      - Add authorized redirect URIs:
+        - For local development: `http://localhost:9000/auth/google/callback`
+        - For production: `https://your-domain.com/auth/google/callback`
+
+   e. Copy your Client ID and Client Secret
+
+4. **Create `.env` file**:
+   Copy `.env.example` to `.env` and fill in your credentials:
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit `.env` and add:
+   ```bash
+   GOOGLE_CLIENT_ID=your-google-client-id-here
+   GOOGLE_CLIENT_SECRET=your-google-client-secret-here
+   GOOGLE_CALLBACK_URL=http://localhost:9000/auth/google/callback
+   SESSION_SECRET=a-random-secret-key-for-sessions
    ```
 
 ## Getting Real-Time Gold/Silver Prices
@@ -73,6 +110,12 @@ These are **completely optional** - the app works great with just Yahoo Finance!
 
 ## How to Use
 
+### First Time Setup
+
+1. **Sign in with Google**: Click "Sign in with Google" button
+2. **Authorize the app**: Allow the app to access your Google profile information
+3. **Start tracking**: Once logged in, you can start adding investments
+
 ### Adding an Investment Entry
 
 1. **Enter Investment Name**: Give your investment a unique name (e.g., "My Bitcoin Holdings")
@@ -93,7 +136,7 @@ These are **completely optional** - the app works great with just Yahoo Finance!
 
 ### Data Storage
 
-All data is stored in `investments_data.csv` in the project directory. This file persists across application restarts.
+Each user's data is stored separately in `user_data/{user_id}.csv` files. Your data is private and only accessible when you're logged in with your Google account. Data persists across application restarts.
 
 ## Free Hosting Options
 
@@ -101,21 +144,32 @@ Here are the **easiest and most recommended** ways to host this application onli
 
 ### 1. **Render.com** (RECOMMENDED - Easiest)
 
-**Why Render**: Simple deployment, free tier, automatic HTTPS, no credit card required.
+**Why Render**: Simple deployment, free tier, automatic HTTPS, persistent disk support, no credit card required.
 
 **Steps**:
 1. Create a free account at [render.com](https://render.com)
 2. Click "New +" → "Web Service"
-3. Connect your GitHub repository (or upload code)
+3. Connect your GitHub repository (https://github.com/Braden-Long/uva-ebus4810-investment-price-tracker)
 4. Configure:
    - **Environment**: Node
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
    - **Port**: The app will automatically use Render's PORT environment variable
-5. Click "Create Web Service"
-6. Your app will be live at: `https://your-app-name.onrender.com`
+5. **Add Environment Variables** (Important!):
+   - Go to "Environment" tab
+   - Add the following variables:
+     - `GOOGLE_CLIENT_ID`: Your Google OAuth Client ID
+     - `GOOGLE_CLIENT_SECRET`: Your Google OAuth Client Secret
+     - `GOOGLE_CALLBACK_URL`: `https://your-app-name.onrender.com/auth/google/callback`
+     - `SESSION_SECRET`: A random secret string (generate one)
+     - `NODE_ENV`: `production`
+6. **Update Google OAuth Redirect URI**:
+   - Go back to Google Cloud Console
+   - Add your Render callback URL to authorized redirect URIs
+7. Click "Create Web Service"
+8. Your app will be live at: `https://your-app-name.onrender.com`
 
-**Note**: Free tier sleeps after 15 minutes of inactivity but wakes up automatically when accessed.
+**Note**: Free tier sleeps after 15 minutes of inactivity but wakes up automatically when accessed. Consider enabling persistent disk for data storage.
 
 ### 2. **Railway.app** (Very Easy)
 
@@ -175,48 +229,76 @@ This is already included in the provided `server.js` file.
 ## Project Structure
 
 ```
-Credit Threader/
-├── server.js              # Express server and API endpoints
+investment-price-tracker/
+├── server.js              # Express server, OAuth, and API endpoints
 ├── index.html             # Main HTML structure
-├── style.css              # Styling
+├── style.css              # Styling and authentication UI
 ├── app.js                 # Client-side JavaScript
 ├── package.json           # Dependencies and scripts
-├── investments_data.csv   # Data storage (created automatically)
+├── user_data/             # Per-user CSV files (created automatically)
+│   └── {user_id}.csv     # Individual user data files
+├── .env.example           # Environment variables template
+├── .gitignore            # Git ignore rules
 └── README.md             # This file
 ```
 
 ## API Endpoints
 
-- `GET /api/metals/:metal` - Fetch gold/silver prices
-- `GET /api/crypto/:symbol` - Fetch cryptocurrency prices
-- `POST /api/save` - Save investment entry
-- `GET /api/data` - Get all investment data
-- `GET /api/data/:investmentName` - Get data for specific investment
-- `GET /api/investments` - Get list of unique investments
+### Authentication
+- `GET /auth/google` - Initiate Google OAuth login
+- `GET /auth/google/callback` - OAuth callback handler
+- `GET /auth/logout` - Logout current user
+- `GET /api/user` - Get current user info (public)
+
+### Investment Data (requires authentication)
+- `GET /api/metals/:metal` - Fetch gold/silver prices (public)
+- `GET /api/crypto/:symbol` - Fetch cryptocurrency prices (public)
+- `POST /api/save` - Save investment entry (authenticated)
+- `GET /api/data` - Get all investment data (authenticated)
+- `GET /api/data/:investmentName` - Get data for specific investment (authenticated)
+- `GET /api/investments` - Get list of unique investments (authenticated)
 
 ## Technologies Used
 
 - **Frontend**: HTML5, CSS3, JavaScript (ES6+)
 - **Backend**: Node.js, Express.js
+- **Authentication**: Passport.js with Google OAuth 2.0
+- **Session Management**: express-session
 - **Charting**: Chart.js
 - **APIs**:
+  - **Google OAuth API** (authentication)
   - **Yahoo Finance API** (precious metals - free, no key required, unlimited)
   - **CoinGecko API** (cryptocurrency prices - free, no key required)
   - Alpha Vantage API (optional backup for metals - 500 requests/day with free key)
   - Commodities-API.com (optional backup for metals - free tier available)
-- **Data Storage**: CSV file system
+- **Data Storage**: Per-user CSV file system
 - **Environment Management**: dotenv
 
 ## Troubleshooting
 
 **Issue**: Server won't start
 - **Solution**: Make sure port 9000 is not in use by another application
+- **Solution**: Verify all required environment variables are set in `.env`
+
+**Issue**: "Google OAuth configured: No" in console
+- **Solution**: Make sure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set in `.env`
+- **Solution**: Verify the values are correct (no extra spaces)
+
+**Issue**: OAuth login fails or redirects incorrectly
+- **Solution**: Check that the callback URL in `.env` matches the one in Google Cloud Console
+- **Solution**: Ensure the redirect URI is added to authorized URIs in Google Console
+
+**Issue**: "Not authenticated" error when trying to save data
+- **Solution**: Make sure you're logged in with Google
+- **Solution**: Check browser console for session errors
+- **Solution**: Clear browser cookies and try logging in again
 
 **Issue**: Prices not fetching
 - **Solution**: Check internet connection; APIs may have rate limits or temporary outages
 
 **Issue**: Data not persisting
 - **Solution**: Ensure write permissions in the project directory
+- **Solution**: Check that `user_data/` directory exists and is writable
 
 **Issue**: Chart not displaying
 - **Solution**: Check browser console for JavaScript errors; ensure Chart.js CDN is accessible
@@ -224,12 +306,13 @@ Credit Threader/
 ## Future Enhancements
 
 - Database integration (PostgreSQL/MongoDB)
-- User authentication
-- Multiple portfolios
-- Price alerts
+- Multiple portfolios per user
+- Price alerts and notifications
 - Export to PDF/Excel
 - Mobile app version
 - Additional asset types (stocks, real estate, etc.)
+- Investment performance analytics
+- Portfolio diversification recommendations
 
 ## License
 

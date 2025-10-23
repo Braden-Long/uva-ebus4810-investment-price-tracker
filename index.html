@@ -11,11 +11,27 @@
 <body>
     <div class="container">
         <header>
-            <h1>Investment Price Tracker</h1>
-            <p>Track precious metals, cryptocurrencies, and custom investments</p>
+            <div class="header-content">
+                <div class="title-section">
+                    <h1>Investment Price Tracker</h1>
+                    <p>Track precious metals, cryptocurrencies, and custom investments</p>
+                </div>
+                <div class="auth-section" id="authSection">
+                    <div id="loginSection">
+                        <a href="/auth/google" class="btn btn-primary">Sign in with Google</a>
+                    </div>
+                    <div id="userSection" style="display: none;">
+                        <div class="user-info">
+                            <img id="userPhoto" src="" alt="User" class="user-photo">
+                            <span id="userName"></span>
+                        </div>
+                        <a href="/auth/logout" class="btn btn-secondary">Logout</a>
+                    </div>
+                </div>
+            </div>
         </header>
 
-        <div class="main-content">
+        <div class="main-content" id="mainContent" style="display: none;">
             <!-- Input Form -->
             <section class="input-section">
                 <h2>Add Investment Entry</h2>
@@ -98,6 +114,21 @@
                     </table>
                 </div>
             </section>
+        </div>
+
+        <div class="login-message" id="loginMessage">
+            <div class="message-content">
+                <h2>Welcome to Investment Price Tracker</h2>
+                <p>Please sign in with your Google account to track your investments</p>
+                <ul>
+                    <li>Track precious metals (Gold, Silver)</li>
+                    <li>Monitor cryptocurrencies (BTC, ETH, LTC, SOL, XRP)</li>
+                    <li>Add custom investments</li>
+                    <li>View historical charts and trends</li>
+                    <li>Your data is stored securely and privately</li>
+                </ul>
+                <a href="/auth/google" class="btn btn-primary btn-large">Sign in with Google</a>
+            </div>
         </div>
     </div>
 

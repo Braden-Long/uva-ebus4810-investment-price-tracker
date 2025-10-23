@@ -3,6 +3,7 @@ node_modules/
 
 # Data files
 investments_data.csv
+user_data/
 
 # Environment variables
 .env

@@ -191,9 +191,113 @@ tbody tr:nth-child(even):hover {
     border-radius: 8px;
 }
 
+/* Authentication UI */
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.title-section {
+    flex: 1;
+}
+
+.auth-section {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 8px 15px;
+    border-radius: 25px;
+    color: white;
+}
+
+.user-photo {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid white;
+}
+
+#userSection {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.login-message {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+    background: white;
+    border-radius: 15px;
+    padding: 40px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.message-content {
+    text-align: center;
+    max-width: 600px;
+}
+
+.message-content h2 {
+    color: #333;
+    margin-bottom: 20px;
+    border: none;
+    padding: 0;
+}
+
+.message-content p {
+    color: #555;
+    font-size: 1.1em;
+    margin-bottom: 30px;
+}
+
+.message-content ul {
+    list-style: none;
+    margin-bottom: 30px;
+    text-align: left;
+    display: inline-block;
+}
+
+.message-content li {
+    padding: 10px 0;
+    color: #555;
+    position: relative;
+    padding-left: 25px;
+}
+
+.message-content li:before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: #48bb78;
+    font-weight: bold;
+}
+
+.btn-large {
+    padding: 15px 40px;
+    font-size: 1.2em;
+    text-decoration: none;
+    display: inline-block;
+}
+
 @media (max-width: 768px) {
     header h1 {
         font-size: 1.8em;
+    }
+
+    .header-content {
+        flex-direction: column;
+        text-align: center;
     }
 
     .main-content {
@@ -212,5 +316,14 @@ tbody tr:nth-child(even):hover {
 
     th, td {
         padding: 8px;
+    }
+
+    .login-message {
+        padding: 20px;
+        min-height: 300px;
+    }
+
+    .user-info {
+        font-size: 0.9em;
     }
 }

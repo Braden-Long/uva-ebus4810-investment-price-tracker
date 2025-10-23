@@ -3,28 +3,93 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
+const session = require('express-session');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 
 const app = express();
 const PORT = process.env.PORT || 9000;
-const DATA_FILE = path.join(__dirname, 'investments_data.csv');
+const USER_DATA_DIR = path.join(__dirname, 'user_data');
+
+// Create user_data directory if it doesn't exist
+if (!fs.existsSync(USER_DATA_DIR)) {
+    fs.mkdirSync(USER_DATA_DIR);
+}
 
 app.use(express.json());
+
+// Session configuration
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Passport serialization
+passport.serializeUser((user, done) => {
+    done(null, user);
+});
+
+passport.deserializeUser((user, done) => {
+    done(null, user);
+});
+
+// Google OAuth Strategy
+passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:9000/auth/google/callback'
+}, (accessToken, refreshToken, profile, done) => {
+    // Store user profile
+    const user = {
+        id: profile.id,
+        email: profile.emails[0].value,
+        displayName: profile.displayName,
+        photo: profile.photos && profile.photos[0] ? profile.photos[0].value : null
+    };
+    return done(null, user);
+}));
+
+// Static files served after auth setup
 app.use(express.static(__dirname));
 
+// Authentication middleware
+function isAuthenticated(req, res, next) {
+    if (req.isAuthenticated()) {
+        return next();
+    }
+    res.status(401).json({ error: 'Not authenticated' });
+}
+
+// Get user data file path
+function getUserDataFile(userId) {
+    return path.join(USER_DATA_DIR, `${userId}.csv`);
+}
+
 // Initialize CSV file if it doesn't exist
-function initializeDataFile() {
-    if (!fs.existsSync(DATA_FILE)) {
+function initializeDataFile(userId) {
+    const dataFile = getUserDataFile(userId);
+    if (!fs.existsSync(dataFile)) {
         const header = 'investmentName,investmentType,amount,value,timestamp\n';
-        fs.writeFileSync(DATA_FILE, header);
+        fs.writeFileSync(dataFile, header);
     }
 }
 
-// Read all data from CSV
-function readData() {
-    if (!fs.existsSync(DATA_FILE)) {
+// Read all data from CSV for specific user
+function readData(userId) {
+    const dataFile = getUserDataFile(userId);
+    if (!fs.existsSync(dataFile)) {
         return [];
     }
-    const content = fs.readFileSync(DATA_FILE, 'utf-8');
+    const content = fs.readFileSync(dataFile, 'utf-8');
     const lines = content.trim().split('\n').slice(1); // Skip header
     return lines.filter(line => line.trim()).map(line => {
         const [investmentName, investmentType, amount, value, timestamp] = line.split(',');
@@ -32,13 +97,53 @@ function readData() {
     });
 }
 
-// Write data to CSV
-function writeData(investmentName, investmentType, amount, value, timestamp) {
+// Write data to CSV for specific user
+function writeData(userId, investmentName, investmentType, amount, value, timestamp) {
+    initializeDataFile(userId);
+    const dataFile = getUserDataFile(userId);
     const line = `${investmentName},${investmentType},${amount},${value},${timestamp}\n`;
-    fs.appendFileSync(DATA_FILE, line);
+    fs.appendFileSync(dataFile, line);
 }
 
-// API endpoint to fetch gold/silver prices
+// Authentication routes
+app.get('/auth/google',
+    passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+app.get('/auth/google/callback',
+    passport.authenticate('google', { failureRedirect: '/' }),
+    (req, res) => {
+        res.redirect('/');
+    }
+);
+
+app.get('/auth/logout', (req, res) => {
+    req.logout((err) => {
+        if (err) {
+            return res.status(500).json({ error: 'Logout failed' });
+        }
+        res.redirect('/');
+    });
+});
+
+// Get current user
+app.get('/api/user', (req, res) => {
+    if (req.isAuthenticated()) {
+        res.json({
+            authenticated: true,
+            user: {
+                id: req.user.id,
+                email: req.user.email,
+                displayName: req.user.displayName,
+                photo: req.user.photo
+            }
+        });
+    } else {
+        res.json({ authenticated: false });
+    }
+});
+
+// API endpoint to fetch gold/silver prices (no auth required)
 app.get('/api/metals/:metal', async (req, res) => {
     try {
         const metal = req.params.metal.toUpperCase();
@@ -172,13 +277,14 @@ app.get('/api/crypto/:symbol', async (req, res) => {
     }
 });
 
-// API endpoint to save investment data
-app.post('/api/save', (req, res) => {
+// API endpoint to save investment data (requires authentication)
+app.post('/api/save', isAuthenticated, (req, res) => {
     try {
         const { investmentName, investmentType, amount, value } = req.body;
         const timestamp = new Date().toISOString();
+        const userId = req.user.id;
 
-        writeData(investmentName, investmentType, amount, value, timestamp);
+        writeData(userId, investmentName, investmentType, amount, value, timestamp);
         res.json({ success: true, timestamp });
     } catch (error) {
         console.error('Error saving data:', error);
@@ -186,10 +292,11 @@ app.post('/api/save', (req, res) => {
     }
 });
 
-// API endpoint to get all data
-app.get('/api/data', (req, res) => {
+// API endpoint to get all data (requires authentication)
+app.get('/api/data', isAuthenticated, (req, res) => {
     try {
-        const data = readData();
+        const userId = req.user.id;
+        const data = readData(userId);
         res.json(data);
     } catch (error) {
         console.error('Error reading data:', error);
@@ -197,10 +304,11 @@ app.get('/api/data', (req, res) => {
     }
 });
 
-// API endpoint to get data for specific investment
-app.get('/api/data/:investmentName', (req, res) => {
+// API endpoint to get data for specific investment (requires authentication)
+app.get('/api/data/:investmentName', isAuthenticated, (req, res) => {
     try {
-        const data = readData();
+        const userId = req.user.id;
+        const data = readData(userId);
         const filtered = data.filter(item => item.investmentName === req.params.investmentName);
         res.json(filtered);
     } catch (error) {
@@ -209,10 +317,11 @@ app.get('/api/data/:investmentName', (req, res) => {
     }
 });
 
-// API endpoint to get list of unique investments
-app.get('/api/investments', (req, res) => {
+// API endpoint to get list of unique investments (requires authentication)
+app.get('/api/investments', isAuthenticated, (req, res) => {
     try {
-        const data = readData();
+        const userId = req.user.id;
+        const data = readData(userId);
         const investments = [...new Set(data.map(item => item.investmentName))];
         res.json(investments);
     } catch (error) {
@@ -221,9 +330,8 @@ app.get('/api/investments', (req, res) => {
     }
 });
 
-// Initialize data file
-initializeDataFile();
-
+// Start server
 app.listen(PORT, () => {
     console.log(`Investment Price Tracker running on http://localhost:${PORT}`);
+    console.log(`Google OAuth configured: ${process.env.GOOGLE_CLIENT_ID ? 'Yes' : 'No'}`);
 });
