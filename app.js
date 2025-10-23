@@ -216,7 +216,7 @@ async function loadInvestments() {
     }
 }
 
-async function loadData() {
+async function loadData(skipAutoUpdate = false) {
     const selectedInvestment = investmentSelector.value;
 
     try {
@@ -229,10 +229,108 @@ async function loadData() {
 
         const data = await response.json();
 
+        // Auto-update investments older than 1 day (but not recursively)
+        if (!skipAutoUpdate) {
+            const updated = await autoUpdateOldInvestments(data);
+            if (updated) {
+                // If any updates occurred, reload data to show fresh values
+                return loadData(true); // Skip auto-update on reload
+            }
+        }
+
         updateTable(data);
         updateChart(data, selectedInvestment);
     } catch (error) {
         console.error('Error loading data:', error);
+    }
+}
+
+// Auto-update investments that haven't been updated in 1+ day
+async function autoUpdateOldInvestments(data) {
+    if (!data || data.length === 0) return false;
+
+    // Group by investment name and get the latest entry for each
+    const investmentMap = {};
+    data.forEach(item => {
+        if (!investmentMap[item.investmentName]) {
+            investmentMap[item.investmentName] = item;
+        } else {
+            const existing = investmentMap[item.investmentName];
+            if (new Date(item.timestamp) > new Date(existing.timestamp)) {
+                investmentMap[item.investmentName] = item;
+            }
+        }
+    });
+
+    const now = Date.now();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    let anyUpdated = false;
+
+    // Check each investment
+    for (const [investmentName, latestEntry] of Object.entries(investmentMap)) {
+        const lastUpdate = new Date(latestEntry.timestamp).getTime();
+        const timeSinceUpdate = now - lastUpdate;
+
+        // If older than 1 day and not CUSTOM, auto-update
+        if (timeSinceUpdate >= oneDayMs && latestEntry.investmentType !== 'CUSTOM') {
+            try {
+                await updateInvestmentSilent(investmentName);
+                anyUpdated = true;
+                console.log(`Auto-updated ${investmentName}`);
+            } catch (error) {
+                console.log(`Auto-update failed for ${investmentName}:`, error.message);
+            }
+        }
+    }
+
+    return anyUpdated;
+}
+
+// Silent update (for auto-updates, doesn't reload data or show messages)
+async function updateInvestmentSilent(investmentName) {
+    const response = await fetch('/api/update', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ investmentName })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Update failed');
+    }
+
+    return result;
+}
+
+// Update investment price (for manual button clicks)
+async function updateInvestment(investmentName) {
+    try {
+        const response = await fetch('/api/update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ investmentName })
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+            showMessage(`${investmentName} updated successfully! New value: $${result.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'success');
+            // Reload data to show update
+            loadInvestments();
+            loadData(true); // Skip auto-update on reload
+            return true;
+        } else {
+            showMessage(result.error || 'Update failed', 'error');
+            return false;
+        }
+    } catch (error) {
+        showMessage('Error updating investment: ' + error.message, 'error');
+        throw error;
     }
 }
 
@@ -242,7 +340,7 @@ function updateTable(data) {
     if (data.length === 0) {
         const row = dataTableBody.insertRow();
         const cell = row.insertCell();
-        cell.colSpan = 5;
+        cell.colSpan = 6; // Updated for new Actions column
         cell.textContent = 'No data available';
         cell.style.textAlign = 'center';
         return;
@@ -251,6 +349,9 @@ function updateTable(data) {
     // Sort by timestamp descending
     data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
+    // Track which investments we've already added update button for (show only once per investment)
+    const updatedInvestments = new Set();
+
     data.forEach(item => {
         const row = dataTableBody.insertRow();
         row.insertCell().textContent = item.investmentName;
@@ -258,6 +359,32 @@ function updateTable(data) {
         row.insertCell().textContent = item.amount.toFixed(8);
         row.insertCell().textContent = '$' + item.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         row.insertCell().textContent = new Date(item.timestamp).toLocaleString();
+
+        // Actions cell - add update button only for first occurrence of each investment
+        const actionsCell = row.insertCell();
+        actionsCell.style.textAlign = 'center';
+
+        if (!updatedInvestments.has(item.investmentName) && item.investmentType !== 'CUSTOM') {
+            const updateBtn = document.createElement('button');
+            updateBtn.textContent = 'Update';
+            updateBtn.className = 'btn btn-update';
+            updateBtn.onclick = async () => {
+                updateBtn.disabled = true;
+                updateBtn.textContent = 'Updating...';
+                try {
+                    await updateInvestment(item.investmentName);
+                } catch (error) {
+                    // Error already shown by updateInvestment
+                }
+                updateBtn.disabled = false;
+                updateBtn.textContent = 'Update';
+            };
+            actionsCell.appendChild(updateBtn);
+            updatedInvestments.add(item.investmentName);
+        } else if (item.investmentType === 'CUSTOM' && !updatedInvestments.has(item.investmentName)) {
+            actionsCell.textContent = '-';
+            updatedInvestments.add(item.investmentName);
+        }
     });
 }
 

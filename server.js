@@ -111,6 +111,93 @@ function writeData(userId, investmentName, investmentType, amount, value, timest
     fs.appendFileSync(dataFile, line);
 }
 
+// Rate limiting for updates - stores last update time per user per investment
+// Format: Map<userId-investmentName, timestamp>
+const updateRateLimits = new Map();
+const RATE_LIMIT_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
+
+// Check if update is allowed (server-side rate limiting)
+function canUpdate(userId, investmentName) {
+    const key = `${userId}-${investmentName}`;
+    const lastUpdate = updateRateLimits.get(key);
+
+    if (!lastUpdate) {
+        return { allowed: true };
+    }
+
+    const timeSinceUpdate = Date.now() - lastUpdate;
+    if (timeSinceUpdate >= RATE_LIMIT_MS) {
+        return { allowed: true };
+    }
+
+    const timeRemaining = RATE_LIMIT_MS - timeSinceUpdate;
+    const minutesRemaining = Math.ceil(timeRemaining / 60000);
+    return {
+        allowed: false,
+        minutesRemaining
+    };
+}
+
+// Record update time (server-side tracking)
+function recordUpdate(userId, investmentName) {
+    const key = `${userId}-${investmentName}`;
+    updateRateLimits.set(key, Date.now());
+}
+
+// Fetch current price for investment type
+async function fetchInvestmentPrice(investmentType) {
+    try {
+        if (investmentType === 'GOLD' || investmentType === 'SILVER') {
+            const metal = investmentType.toUpperCase();
+
+            // Try Yahoo Finance first
+            try {
+                const yahooSymbol = metal === 'GOLD' ? 'GC=F' : 'SI=F';
+                const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`, {
+                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data?.chart?.result?.[0]) {
+                        const price = data.chart.result[0].meta.regularMarketPrice ||
+                                     data.chart.result[0].meta.previousClose;
+                        if (price) return price;
+                    }
+                }
+            } catch (err) {
+                console.log('Yahoo Finance failed for price fetch');
+            }
+
+            // Fallback prices if APIs fail
+            return metal === 'GOLD' ? 2650 : 30.5;
+
+        } else if (['BTC', 'ETH', 'LTC', 'SOL', 'XRP'].includes(investmentType)) {
+            const coinMap = {
+                'BTC': 'bitcoin',
+                'ETH': 'ethereum',
+                'LTC': 'litecoin',
+                'SOL': 'solana',
+                'XRP': 'ripple'
+            };
+            const coinId = coinMap[investmentType];
+
+            const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+            const data = await response.json();
+
+            if (data?.[coinId]?.usd) {
+                return data[coinId].usd;
+            }
+
+            throw new Error('Failed to fetch crypto price');
+        } else {
+            throw new Error('Cannot auto-update CUSTOM investment types');
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
 // Authentication routes
 app.get('/auth/google',
     passport.authenticate('google', { scope: ['profile', 'email'] })
@@ -294,6 +381,71 @@ app.post('/api/save', isAuthenticated, (req, res) => {
         res.json({ success: true, timestamp });
     } catch (error) {
         console.error('Error saving data:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// API endpoint to update investment price (requires authentication + rate limiting)
+app.post('/api/update', isAuthenticated, async (req, res) => {
+    try {
+        const { investmentName } = req.body;
+        const userId = req.user.id;
+
+        if (!investmentName) {
+            return res.status(400).json({ error: 'Investment name is required' });
+        }
+
+        // SERVER-SIDE RATE LIMITING - prevents code injection attacks
+        const rateLimitCheck = canUpdate(userId, investmentName);
+        if (!rateLimitCheck.allowed) {
+            return res.status(429).json({
+                error: `Please wait ${rateLimitCheck.minutesRemaining} minutes before updating again`,
+                minutesRemaining: rateLimitCheck.minutesRemaining
+            });
+        }
+
+        // Get the latest entry for this investment to find amount and type
+        const data = readData(userId);
+        const investmentEntries = data.filter(item => item.investmentName === investmentName);
+
+        if (investmentEntries.length === 0) {
+            return res.status(404).json({ error: 'Investment not found' });
+        }
+
+        // Get the most recent entry
+        const latestEntry = investmentEntries.sort((a, b) =>
+            new Date(b.timestamp) - new Date(a.timestamp)
+        )[0];
+
+        const { investmentType, amount } = latestEntry;
+
+        // Cannot update CUSTOM investments (no API to fetch price)
+        if (investmentType === 'CUSTOM') {
+            return res.status(400).json({ error: 'Cannot auto-update custom investments' });
+        }
+
+        // Fetch current price
+        const unitPrice = await fetchInvestmentPrice(investmentType);
+        const totalValue = unitPrice * amount;
+
+        // Save new entry with current timestamp
+        const timestamp = new Date().toISOString();
+        writeData(userId, investmentName, investmentType, amount, totalValue, timestamp);
+
+        // Record update time (server-side tracking)
+        recordUpdate(userId, investmentName);
+
+        res.json({
+            success: true,
+            timestamp,
+            unitPrice,
+            totalValue,
+            investmentType,
+            amount
+        });
+
+    } catch (error) {
+        console.error('Error updating investment:', error);
         res.status(500).json({ error: error.message });
     }
 });

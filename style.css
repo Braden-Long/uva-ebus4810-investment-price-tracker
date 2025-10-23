@@ -120,6 +120,27 @@ select:focus {
     box-shadow: 0 5px 15px rgba(72, 187, 120, 0.4);
 }
 
+.btn-update {
+    background: #ed8936;
+    color: white;
+    padding: 8px 16px;
+    font-size: 0.9em;
+    margin-right: 0;
+}
+
+.btn-update:hover {
+    background: #dd6b20;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(237, 137, 54, 0.4);
+}
+
+.btn-update:disabled {
+    background: #cbd5e0;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 .price-display {
     margin-top: 15px;
     padding: 15px;
