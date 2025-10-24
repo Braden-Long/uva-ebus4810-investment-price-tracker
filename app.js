@@ -618,7 +618,62 @@ function refreshData() {
     showMessage('Data refreshed', 'success');
 }
 
+// Show message in modal popup
+let currentMessageTimeout = null;
+
 function showMessage(message, type) {
+    const modal = document.getElementById('messageModal');
+    const modalMessage = document.getElementById('modalMessage');
+
+    // Clear any existing timeout
+    if (currentMessageTimeout) {
+        clearTimeout(currentMessageTimeout);
+        currentMessageTimeout = null;
+    }
+
+    // Set message and type
+    modalMessage.textContent = message;
+    modalMessage.className = `modal-message ${type}`;
+
+    // Show modal
+    modal.style.display = 'block';
+
+    // Auto-close success messages after 4 seconds
+    if (type === 'success') {
+        currentMessageTimeout = setTimeout(() => {
+            closeModal();
+        }, 4000);
+    }
+
+    // Also update priceDisplay for fetch price button compatibility
     priceDisplay.textContent = message;
     priceDisplay.className = `price-display ${type}`;
 }
+
+function closeModal() {
+    const modal = document.getElementById('messageModal');
+    modal.style.display = 'none';
+
+    if (currentMessageTimeout) {
+        clearTimeout(currentMessageTimeout);
+        currentMessageTimeout = null;
+    }
+}
+
+// Setup modal close handlers when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('messageModal');
+    const closeBtn = document.querySelector('.modal-close');
+
+    // Close when clicking X
+    if (closeBtn) {
+        closeBtn.onclick = closeModal;
+    }
+
+    // Close when clicking outside modal
+    window.onclick = (event) => {
+        if (event.target === modal) {
+            closeModal();
+        }
+    };
+});
