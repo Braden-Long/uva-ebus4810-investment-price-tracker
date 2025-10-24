@@ -633,13 +633,20 @@ function handleInvestmentSelect() {
 function refreshData() {
     loadInvestments();
     loadData();
-    showMessage('Data refreshed', 'success');
+    // Don't show modal for refresh - it's too noisy
+    console.log('Data refreshed');
 }
 
-// Show message in modal popup
+// Show message in static display area (under fetch price button)
+function showMessage(message, type) {
+    priceDisplay.textContent = message;
+    priceDisplay.className = `price-display ${type}`;
+}
+
+// Show message in modal popup (ONLY for rate limit errors)
 let currentMessageTimeout = null;
 
-function showMessage(message, type) {
+function showModalMessage(message, type) {
     const modal = document.getElementById('messageModal');
     const modalMessage = document.getElementById('modalMessage');
 
@@ -662,10 +669,6 @@ function showMessage(message, type) {
             closeModal();
         }, 4000);
     }
-
-    // Also update priceDisplay for fetch price button compatibility
-    priceDisplay.textContent = message;
-    priceDisplay.className = `price-display ${type}`;
 }
 
 function closeModal() {
