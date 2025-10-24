@@ -114,27 +114,100 @@ function writeData(userId, investmentName, investmentType, amount, value, timest
 // Rate limiting for updates - stores last update time per user per investment
 // Format: Map<userId-investmentName, timestamp>
 const updateRateLimits = new Map();
-const RATE_LIMIT_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
+const UPDATE_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
+
+// Rate limiting for creation - stores last creation time per user
+// Format: Map<userId, timestamp>
+const creationRateLimits = new Map();
+
+// Investment creation timestamps - tracks when each investment was created
+// Format: Map<userId-investmentName, creationTimestamp>
+const investmentCreationTimes = new Map();
+
+// Check if creation is allowed (server-side rate limiting with tiered limits)
+function canCreateInvestment(userId) {
+    const now = Date.now();
+    const lastCreation = creationRateLimits.get(userId);
+
+    // Count total investments for this user
+    const data = readData(userId);
+    const uniqueInvestments = new Set(data.map(item => item.investmentName));
+    const investmentCount = uniqueInvestments.size;
+
+    // Determine cooldown based on count (tiered rate limiting)
+    let cooldownMs;
+    if (investmentCount < 20) {
+        cooldownMs = 10 * 1000; // 10 seconds for first 20
+    } else if (investmentCount < 50) {
+        cooldownMs = 60 * 1000; // 60 seconds for 20-50
+    } else {
+        cooldownMs = 60 * 60 * 1000; // 1 hour for 50+
+    }
+
+    if (!lastCreation) {
+        return { allowed: true, investmentCount };
+    }
+
+    const timeSinceCreation = now - lastCreation;
+    if (timeSinceCreation >= cooldownMs) {
+        return { allowed: true, investmentCount };
+    }
+
+    const timeRemaining = cooldownMs - timeSinceCreation;
+    const secondsRemaining = Math.ceil(timeRemaining / 1000);
+    return {
+        allowed: false,
+        secondsRemaining,
+        investmentCount,
+        cooldownMs
+    };
+}
+
+// Record creation time (server-side tracking)
+function recordCreation(userId, investmentName) {
+    const now = Date.now();
+    creationRateLimits.set(userId, now);
+    const key = `${userId}-${investmentName}`;
+    investmentCreationTimes.set(key, now);
+}
 
 // Check if update is allowed (server-side rate limiting)
 function canUpdate(userId, investmentName) {
+    const now = Date.now();
     const key = `${userId}-${investmentName}`;
-    const lastUpdate = updateRateLimits.get(key);
 
+    // Check if investment was created less than 10 minutes ago
+    const creationTime = investmentCreationTimes.get(key);
+    if (creationTime) {
+        const timeSinceCreation = now - creationTime;
+        if (timeSinceCreation < UPDATE_COOLDOWN_MS) {
+            const timeRemaining = UPDATE_COOLDOWN_MS - timeSinceCreation;
+            const secondsRemaining = Math.ceil(timeRemaining / 1000);
+            return {
+                allowed: false,
+                secondsRemaining,
+                reason: 'creation'
+            };
+        }
+    }
+
+    // Check last update time
+    const lastUpdate = updateRateLimits.get(key);
     if (!lastUpdate) {
         return { allowed: true };
     }
 
-    const timeSinceUpdate = Date.now() - lastUpdate;
-    if (timeSinceUpdate >= RATE_LIMIT_MS) {
+    const timeSinceUpdate = now - lastUpdate;
+    if (timeSinceUpdate >= UPDATE_COOLDOWN_MS) {
         return { allowed: true };
     }
 
-    const timeRemaining = RATE_LIMIT_MS - timeSinceUpdate;
-    const minutesRemaining = Math.ceil(timeRemaining / 60000);
+    const timeRemaining = UPDATE_COOLDOWN_MS - timeSinceUpdate;
+    const secondsRemaining = Math.ceil(timeRemaining / 1000);
     return {
         allowed: false,
-        minutesRemaining
+        secondsRemaining,
+        reason: 'update'
     };
 }
 
@@ -370,15 +443,57 @@ app.get('/api/crypto/:symbol', async (req, res) => {
     }
 });
 
-// API endpoint to save investment data (requires authentication)
+// Helper function to format time remaining
+function formatTimeRemaining(seconds) {
+    if (seconds < 60) {
+        return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+    } else if (seconds < 3600) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        if (remainingSeconds === 0) {
+            return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+        }
+        return `${minutes} minute${minutes !== 1 ? 's' : ''} ${remainingSeconds} second${remainingSeconds !== 1 ? 's' : ''}`;
+    } else {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        if (minutes === 0) {
+            return `${hours} hour${hours !== 1 ? 's' : ''}`;
+        }
+        return `${hours} hour${hours !== 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    }
+}
+
+// API endpoint to save investment data (requires authentication + rate limiting)
 app.post('/api/save', isAuthenticated, (req, res) => {
     try {
         const { investmentName, investmentType, amount, value } = req.body;
-        const timestamp = new Date().toISOString();
         const userId = req.user.id;
 
+        // SERVER-SIDE CREATION RATE LIMITING - prevents spam/code injection
+        const creationCheck = canCreateInvestment(userId);
+        if (!creationCheck.allowed) {
+            const timeStr = formatTimeRemaining(creationCheck.secondsRemaining);
+            return res.status(429).json({
+                error: `Rate limit: Please wait ${timeStr} before creating another investment`,
+                secondsRemaining: creationCheck.secondsRemaining,
+                investmentCount: creationCheck.investmentCount
+            });
+        }
+
+        const timestamp = new Date().toISOString();
+
+        // Save the data
         writeData(userId, investmentName, investmentType, amount, value, timestamp);
-        res.json({ success: true, timestamp });
+
+        // Record creation time (for rate limiting)
+        recordCreation(userId, investmentName);
+
+        res.json({
+            success: true,
+            timestamp,
+            investmentCount: creationCheck.investmentCount + 1
+        });
     } catch (error) {
         console.error('Error saving data:', error);
         res.status(500).json({ error: error.message });
@@ -398,9 +513,14 @@ app.post('/api/update', isAuthenticated, async (req, res) => {
         // SERVER-SIDE RATE LIMITING - prevents code injection attacks
         const rateLimitCheck = canUpdate(userId, investmentName);
         if (!rateLimitCheck.allowed) {
+            const timeStr = formatTimeRemaining(rateLimitCheck.secondsRemaining);
+            const reason = rateLimitCheck.reason === 'creation'
+                ? 'This investment was just created.'
+                : 'This investment was recently updated.';
             return res.status(429).json({
-                error: `Please wait ${rateLimitCheck.minutesRemaining} minutes before updating again`,
-                minutesRemaining: rateLimitCheck.minutesRemaining
+                error: `${reason} Please wait ${timeStr} before updating again`,
+                secondsRemaining: rateLimitCheck.secondsRemaining,
+                reason: rateLimitCheck.reason
             });
         }
 

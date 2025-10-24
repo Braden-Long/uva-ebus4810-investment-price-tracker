@@ -145,6 +145,48 @@ async function fetchPrice() {
     }
 }
 
+// Format time remaining for display
+function formatTimeRemaining(seconds) {
+    if (seconds < 60) {
+        return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+    } else if (seconds < 3600) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        if (remainingSeconds === 0) {
+            return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+        }
+        return `${minutes} minute${minutes !== 1 ? 's' : ''} ${remainingSeconds} second${remainingSeconds !== 1 ? 's' : ''}`;
+    } else {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        if (minutes === 0) {
+            return `${hours} hour${hours !== 1 ? 's' : ''}`;
+        }
+        return `${hours} hour${hours !== 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    }
+}
+
+// Show countdown timer that updates every second
+function showCountdownMessage(baseMessage, initialSeconds) {
+    let secondsRemaining = initialSeconds;
+    const updateMessage = () => {
+        const timeStr = formatTimeRemaining(secondsRemaining);
+        showMessage(`${baseMessage} ${timeStr}`, 'error');
+    };
+
+    updateMessage(); // Show initial message
+
+    const interval = setInterval(() => {
+        secondsRemaining--;
+        if (secondsRemaining <= 0) {
+            clearInterval(interval);
+            showMessage('You can try again now', 'success');
+        } else {
+            updateMessage();
+        }
+    }, 1000);
+}
+
 async function handleSubmit(e) {
     e.preventDefault();
 
@@ -183,14 +225,17 @@ async function handleSubmit(e) {
 
         const result = await response.json();
 
-        if (result.success) {
+        if (response.ok && result.success) {
             showMessage('Investment data saved successfully!', 'success');
             investmentForm.reset();
             currentPrice = null;
             loadInvestments();
             loadData();
+        } else if (response.status === 429 && result.secondsRemaining) {
+            // Rate limited - show countdown
+            showCountdownMessage('Rate limit. Please wait', result.secondsRemaining);
         } else {
-            showMessage('Failed to save data', 'error');
+            showMessage(result.error || 'Failed to save data', 'error');
         }
     } catch (error) {
         console.error('Error saving data:', error);
@@ -324,6 +369,13 @@ async function updateInvestment(investmentName) {
             loadInvestments();
             loadData(true); // Skip auto-update on reload
             return true;
+        } else if (response.status === 429 && result.secondsRemaining) {
+            // Rate limited - show countdown with reason
+            const baseMsg = result.reason === 'creation'
+                ? `${investmentName} was just created. Please wait`
+                : `${investmentName} was recently updated. Please wait`;
+            showCountdownMessage(baseMsg, result.secondsRemaining);
+            return false;
         } else {
             showMessage(result.error || 'Update failed', 'error');
             return false;
