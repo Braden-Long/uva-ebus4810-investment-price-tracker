@@ -168,21 +168,39 @@ function formatTimeRemaining(seconds) {
 
 // Show countdown timer that updates every second
 function showCountdownMessage(baseMessage, initialSeconds) {
+    const modal = document.getElementById('messageModal');
+    const modalMessage = document.getElementById('modalMessage');
+
+    // Clear any existing timeout
+    if (currentMessageTimeout) {
+        clearTimeout(currentMessageTimeout);
+        currentMessageTimeout = null;
+    }
+
     let secondsRemaining = initialSeconds;
+
     const updateMessage = () => {
         const timeStr = formatTimeRemaining(secondsRemaining);
-        showMessage(`${baseMessage} ${timeStr}`, 'error');
+        modalMessage.textContent = `${baseMessage} ${timeStr}`;
+        modalMessage.className = 'modal-message error';
     };
 
+    // Show modal once
+    modal.style.display = 'block';
     updateMessage(); // Show initial message
 
     const interval = setInterval(() => {
         secondsRemaining--;
         if (secondsRemaining <= 0) {
             clearInterval(interval);
-            showMessage('You can try again now', 'success');
+            modalMessage.textContent = 'You can try again now';
+            modalMessage.className = 'modal-message success';
+            // Auto-close success message after 3 seconds
+            setTimeout(() => {
+                closeModal();
+            }, 3000);
         } else {
-            updateMessage();
+            updateMessage(); // Update text only, don't re-open modal
         }
     }, 1000);
 }
